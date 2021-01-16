@@ -184,18 +184,16 @@ bool QgsAccessControl::allowToEdit( const QgsVectorLayer *layer, const QgsFeatur
 }
 
 //! Fill the capabilities caching key
-bool QgsAccessControl::fillCacheKey( QStringList &cacheKey ) const
+void QgsAccessControl::fillCacheKey( QStringList &cacheKey ) const
 {
   QgsAccessControlFilterMap::const_iterator acIterator;
   for ( acIterator = mPluginsAccessControls->constBegin(); acIterator != mPluginsAccessControls->constEnd(); ++acIterator )
   {
     QString newKey = acIterator.value()->cacheKey();
-    if ( newKey.length() == 0 )
+    if ( ! newKey.isEmpty() )
     {
-      cacheKey.clear();
-      return false;
+      cacheKey << newKey;
     }
-    cacheKey << newKey;
   }
   return true;
 }
