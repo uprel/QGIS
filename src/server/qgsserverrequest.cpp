@@ -21,16 +21,6 @@
 #include <QUrlQuery>
 
 
-const QString QgsServerRequest::HOST = QStringLiteral( "Host" );
-const QString QgsServerRequest::FORWARDED = QStringLiteral( "Forwarded" );
-const QString QgsServerRequest::X_FORWARDED_HOST = QStringLiteral( "X-Forwarded-Host" );
-const QString QgsServerRequest::X_FORWARDED_PROTO = QStringLiteral( "X-Forwarded-Proto" );
-const QString QgsServerRequest::X_QGIS_SERVICE_URL = QStringLiteral( "X-Qgis-Service-Url" );
-const QString QgsServerRequest::X_QGIS_WMS_SERVICE_URL = QStringLiteral( "X-Qgis-Wms-Service-Url" );
-const QString QgsServerRequest::X_QGIS_WFS_SERVICE_URL = QStringLiteral( "X-Qgis-Wfs-Service-Url" );
-const QString QgsServerRequest::X_QGIS_WCS_SERVICE_URL = QStringLiteral( "X-Qgis-Wcs-Service-Url" );
-const QString QgsServerRequest::X_QGIS_WMTS_SERVICE_URL = QStringLiteral( "X-Qgis-Wmts-Service-Url" );
-
 QgsServerRequest::QgsServerRequest( const QString &url, Method method, const Headers &headers )
   : QgsServerRequest( QUrl( url ), method, headers )
 {
@@ -42,7 +32,18 @@ QgsServerRequest::QgsServerRequest( const QUrl &url, Method method, const Header
   , mBaseUrl( url )
   , mMethod( method )
   , mHeaders( headers )
+  , mRequestHeaderConv()
 {
+  mRequestHeaderConv.add( HOST, "Host" )
+  mRequestHeaderConv.add( FORWARDED, "Forwarded" )
+  mRequestHeaderConv.add( X_FORWARDED_HOST, "X-Forwarded-Host" )
+  mRequestHeaderConv.add( X_FORWARDED_PROTO, "X-Forwarded-Proto" )
+  mRequestHeaderConv.add( X_QGIS_SERVICE_URL, "X-Qgis-Service-Url" )
+  mRequestHeaderConv.add( X_QGIS_WMS_SERVICE_URL, "X-Qgis-Wms-Service-Url" )
+  mRequestHeaderConv.add( X_QGIS_WFS_SERVICE_URL, "X-Qgis-Wfs-Service-Url" )
+  mRequestHeaderConv.add( X_QGIS_WCS_SERVICE_URL, "X-Qgis-Wcs-Service-Url" )
+  mRequestHeaderConv.add( X_QGIS_WMTS_SERVICE_URL, "X-Qgis-Wmts-Service-Url" )
+
   mParams.load( QUrlQuery( url ) );
 }
 
@@ -53,6 +54,7 @@ QgsServerRequest::QgsServerRequest( const QgsServerRequest &other )
   , mMethod( other.mMethod )
   , mHeaders( other.mHeaders )
   , mParams( other.mParams )
+  , mRequestHeaderConv( other.mRequestHeaderConv )
 {
 }
 
@@ -65,6 +67,12 @@ QString QgsServerRequest::methodToString( const QgsServerRequest::Method &method
 QString QgsServerRequest::header( const QString &name ) const
 {
   return mHeaders.value( name );
+}
+
+
+QString header( const RequestHeader &headerEnum ) const;
+{
+  return header( mRequestHeaderConv.get( headerEnum ) )
 }
 
 void QgsServerRequest::setHeader( const QString &name, const QString &value )
