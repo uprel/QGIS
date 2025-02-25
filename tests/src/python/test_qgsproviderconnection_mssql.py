@@ -20,6 +20,7 @@ from qgis.core import (
     Qgis,
     QgsCoordinateReferenceSystem,
     QgsFields,
+    QgsAbstractDatabaseProviderConnection,
 )
 from qgis.testing import unittest
 
@@ -43,7 +44,7 @@ class TestPyQgsProviderConnectionMssql(
         TestPyQgsProviderConnectionBase.setUpClass()
 
         # These are the connection details for the SQL Server instance running on Travis
-        cls.dbconn = "service='testsqlserver' user=sa password='<YourStrong!Passw0rd>' "
+        cls.dbconn = "service='testsqlserver' user=sa password='QGIStestSQLServer1234' "
         if "QGIS_MSSQLTEST_DB" in os.environ:
             cls.dbconn = os.environ["QGIS_MSSQLTEST_DB"]
 
@@ -59,7 +60,7 @@ class TestPyQgsProviderConnectionMssql(
     def test_configuration(self):
         """Test storage and retrieval for configuration parameters"""
 
-        uri = "dbname='qgis_test' service='driver={SQL Server};server=localhost;port=1433;database=qgis_test' user='sa' password='<YourStrong!Passw0rd>' srid=4326 type=Point estimatedMetadata='true' disableInvalidGeometryHandling='1' table=\"qgis_test\".\"someData\" (geom)"
+        uri = "dbname='qgis_test' service='driver={SQL Server};server=localhost;port=1433;database=qgis_test' user='sa' password='QGIStestSQLServer1234' srid=4326 type=Point estimatedMetadata='true' disableInvalidGeometryHandling='1' table=\"qgis_test\".\"someData\" (geom)"
         md = QgsProviderRegistry.instance().providerMetadata("mssql")
         conn = md.createConnection(uri, {})
         ds_uri = QgsDataSourceUri(conn.uri())
@@ -70,7 +71,7 @@ class TestPyQgsProviderConnectionMssql(
         self.assertEqual(ds_uri.geometryColumn(), "")
         self.assertTrue(ds_uri.useEstimatedMetadata())
         self.assertEqual(ds_uri.srid(), "")
-        self.assertEqual(ds_uri.password(), "<YourStrong!Passw0rd>")
+        self.assertEqual(ds_uri.password(), "QGIStestSQLServer1234")
         self.assertEqual(ds_uri.param("disableInvalidGeometryHandling"), "1")
 
         conn.store("coronavirus")
@@ -83,7 +84,7 @@ class TestPyQgsProviderConnectionMssql(
         self.assertTrue(ds_uri.useEstimatedMetadata())
         self.assertEqual(ds_uri.geometryColumn(), "")
         self.assertEqual(ds_uri.srid(), "")
-        self.assertEqual(ds_uri.password(), "<YourStrong!Passw0rd>")
+        self.assertEqual(ds_uri.password(), "QGIStestSQLServer1234")
         self.assertEqual(ds_uri.param("disableInvalidGeometryHandling"), "true")
         conn.remove("coronavirus")
 
@@ -241,6 +242,82 @@ class TestPyQgsProviderConnectionMssql(
         # we can't retrieve this, as SQL server will have raised an exception
         # due to the invalid geometries in this table
         self.assertEqual(len(tb.geometryColumnTypes()), 0)
+
+    def test_create_vector_layer(self):
+        """Test query layers"""
+
+        md = QgsProviderRegistry.instance().providerMetadata("mssql")
+        conn = md.createConnection(self.uri, {})
+
+        options = QgsAbstractDatabaseProviderConnection.SqlVectorLayerOptions()
+        options.sql = "SELECT pk as pk, name as my_name, geom as geometry FROM qgis_test.someData WHERE pk < 3"
+        options.primaryKeyColumns = ["pk"]
+        options.geometryColumn = "geometry"
+        vl = conn.createSqlVectorLayer(options)
+        self.assertTrue(vl.isValid())
+        self.assertTrue(vl.isSqlQuery())
+        # Test flags
+        self.assertTrue(vl.vectorLayerTypeFlags() & Qgis.VectorLayerTypeFlag.SqlQuery)
+        self.assertEqual(vl.geometryType(), Qgis.GeometryType.Point)
+        features = [f for f in vl.getFeatures()]
+        self.assertEqual(len(features), 2)
+        self.assertEqual(vl.dataProvider().geometryColumnName(), "geometry")
+        self.assertEqual(
+            vl.dataProvider().crs(), QgsCoordinateReferenceSystem("EPSG:4326")
+        )
+
+        # Wrong calls
+        options.primaryKeyColumns = ["DOES_NOT_EXIST"]
+        vl = conn.createSqlVectorLayer(options)
+        self.assertFalse(vl.isValid())
+        self.assertFalse(vl.vectorLayerTypeFlags() & Qgis.VectorLayerTypeFlag.SqlQuery)
+        self.assertFalse(vl.isSqlQuery())
+
+        options.primaryKeyColumns = ["id"]
+        options.geometryColumn = "DOES_NOT_EXIST"
+        vl = conn.createSqlVectorLayer(options)
+        self.assertFalse(vl.isValid())
+        self.assertFalse(vl.isSqlQuery())
+
+        # No geometry and no PK
+        options.sql = "SELECT pk as pk, geom as geometry FROM qgis_test.someData"
+        options.primaryKeyColumns = []
+        options.geometryColumn = ""
+        vl = conn.createSqlVectorLayer(options)
+        self.assertTrue(vl.isValid())
+        self.assertTrue(vl.isSqlQuery())
+        self.assertEqual(vl.geometryType(), Qgis.GeometryType.Unknown)
+        self.assertEqual(vl.dataProvider().pkAttributeIndexes(), [0])
+        features = [f for f in vl.getFeatures()]
+        self.assertEqual(len(features), 5)
+
+        # No PKs
+        options.primaryKeyColumns = []
+        options.geometryColumn = "geometry"
+        vl = conn.createSqlVectorLayer(options)
+        self.assertTrue(vl.isSqlQuery())
+        self.assertTrue(vl.isValid())
+        self.assertEqual(vl.geometryType(), Qgis.GeometryType.Point)
+        self.assertEqual(vl.dataProvider().pkAttributeIndexes(), [0])
+        features = [f for f in vl.getFeatures()]
+        self.assertEqual(len(features), 5)
+
+        # changing geometry type
+        options.sql = (
+            "SELECT pk as pk, geom.STBuffer(1) as geometry FROM qgis_test.someData"
+        )
+        options.primaryKeyColumns = ["pk"]
+        options.geometryColumn = "geometry"
+        vl = conn.createSqlVectorLayer(options)
+        self.assertTrue(vl.isSqlQuery())
+        self.assertTrue(vl.isValid())
+        self.assertEqual(vl.geometryType(), Qgis.GeometryType.Polygon)
+        self.assertEqual(vl.dataProvider().pkAttributeIndexes(), [0])
+        features = [f for f in vl.getFeatures()]
+        self.assertEqual(len(features), 5)
+        self.assertEqual(
+            vl.dataProvider().crs(), QgsCoordinateReferenceSystem("EPSG:4326")
+        )
 
 
 if __name__ == "__main__":
