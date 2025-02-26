@@ -59,6 +59,8 @@ class GUI_EXPORT QgsGeocoderLocatorFilter : public QgsAbstractGeocoderLocatorFil
 
     QgsLocatorFilter *clone() const override SIP_FACTORY;
 
+    void fetchResults( const QString &string, const QgsLocatorContext &context, QgsFeedback *feedback ) override;
+
   private:
     void handleGeocodeResult( const QgsGeocoderResult &result ) override;
 
